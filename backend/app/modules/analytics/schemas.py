@@ -98,3 +98,17 @@ class VerificationRecordResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — AI Business Brief
+# ---------------------------------------------------------------------------
+
+
+class AIBusinessBriefResponse(BaseModel):
+    """Serialises the structured AI generated business brief."""
+
+    executive_summary: str
+    key_takeaways: list[str]
+    needs_attention: list[str]
+    decision_context: str

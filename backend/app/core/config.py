@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     storage_bucket_name: str = "uploads"
     max_upload_size_bytes: int = 10 * 1024 * 1024  # 10 MB
 
+    # --- Gemini AI ---
+    # Server-side only. Never sent to the frontend.
+    gemini_api_key: str = ""
+
     # --- CORS ---
     cors_origins: str = "http://localhost:3000"
 

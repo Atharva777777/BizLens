@@ -7,9 +7,10 @@ respective engines; this router is a thin HTTP layer that enforces authenticatio
 and file ownership, then delegates.
 
 Architecture:
-  ANALYTICS COMPUTES   ← MetricsEngine (/{file_id})
-  LLM EXPLAINS         ← future phase
+  ANALYTICS COMPUTES     ← MetricsEngine (/{file_id})
+  LLM EXPLAINS           ← GeminiService (/{file_id}/brief)
   VERIFICATION VALIDATES ← VerificationEngine (/{file_id}/verify, /{file_id}/verification)
+  EVIDENCE PROVES        ← NormalizedFact (/{file_id}/evidence/{canonical_name})
 """
 
 import uuid
@@ -22,6 +23,7 @@ from app.modules.analytics.insights import InsightsEngine
 from app.modules.analytics.metrics import MetricsEngine
 from app.modules.analytics.models import VerificationRecord
 from app.modules.analytics.schemas import (
+    AIBusinessBriefResponse,
     FileInsightsResponse,
     FileMetricsResponse,
     InsightResponse,
@@ -299,3 +301,118 @@ def get_verification_records(
     )
 
     return [VerificationRecordResponse.model_validate(r) for r in records]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/analytics/{file_id}/brief  (Phase 5 — AI Business Brief)
+# ---------------------------------------------------------------------------
+
+@router.post("/{file_id}/brief", response_model=AIBusinessBriefResponse)
+def generate_ai_brief(
+    file_id: uuid.UUID,
+    user_id: AuthenticatedUser,
+    db: DbSession,
+) -> AIBusinessBriefResponse:
+    """
+    Generate an AI Business Brief for a completed file.
+
+    Architecture:
+      1. Validates authentication and file ownership.
+      2. Runs MetricsEngine and InsightsEngine (deterministic, no LLM).
+      3. Reads persisted VerificationRecord rows (read-only, no mutation).
+      4. Assembles a controlled BizLensAnalyticsContext (no raw DB objects).
+      5. Calls the Gemini service with that context.
+      6. Validates the structured response with Pydantic.
+      7. Returns AIBusinessBriefResponse.
+
+    Gemini NEVER accesses the database directly.
+    Verification records are NOT mutated by this endpoint.
+    The GEMINI_API_KEY is NEVER returned to the frontend.
+
+    Returns:
+        AIBusinessBriefResponse — validated AI-generated business brief.
+
+    Raises:
+        401 — missing or invalid JWT.
+        404 — file not found or belongs to a different user.
+        409 — file not yet COMPLETED.
+        503 — GEMINI_API_KEY is not configured.
+        502 — Gemini API call failed or returned an invalid response.
+    """
+    from app.services.ai.gemini import (
+        BizLensAnalyticsContext,
+        InsightContext,
+        MetricContext,
+        VerificationContext,
+        GeminiConfigError,
+        GeminiAPIError,
+        GeminiParseError,
+        generate_business_brief,
+    )
+
+    file_record = _get_completed_file(file_id, user_id, db)
+
+    # 1. Deterministic analytics
+    metrics = MetricsEngine(db, file_id).calculate()
+    insights = InsightsEngine(metrics).generate()
+
+    # 2. Persisted verification records (read-only, no mutation)
+    verification_records = (
+        db.query(VerificationRecord)
+        .filter(VerificationRecord.file_id == file_id)
+        .order_by(VerificationRecord.created_at)
+        .all()
+    )
+
+    # 3. Build controlled context — no raw DB objects reach Gemini
+    metric_list: list[MetricContext] = []
+    if metrics.revenue_fact_count > 0:
+        metric_list.append(MetricContext(name="total_revenue", label="Total Revenue", value=metrics.total_revenue, unit=None))
+    if metrics.expense_fact_count > 0:
+        metric_list.append(MetricContext(name="total_expense", label="Total Expense", value=metrics.total_expense, unit=None))
+    if metrics.revenue_fact_count > 0 and metrics.expense_fact_count > 0:
+        metric_list.append(MetricContext(name="net_profit", label="Net Profit", value=metrics.net_profit, unit=None))
+    if metrics.operating_margin is not None:
+        metric_list.append(MetricContext(name="operating_margin", label="Operating Margin", value=metrics.operating_margin, unit="%"))
+
+    ctx = BizLensAnalyticsContext(
+        filename=file_record.original_filename,
+        metrics=metric_list,
+        insights=[InsightContext(metric=i.metric, label=i.label, observation=i.observation, supporting_value=i.supporting_value) for i in insights],
+        verifications=[VerificationContext(metric=v.metric, status=v.status, claimed_value=v.claimed_value, verified_value=v.verified_value) for v in verification_records],
+        revenue_fact_count=metrics.revenue_fact_count,
+        expense_fact_count=metrics.expense_fact_count,
+    )
+
+       # 4. Call Gemini (server-side only)
+    try:
+        brief = generate_business_brief(ctx)
+
+    except GeminiConfigError as exc:
+        logger.warning("Gemini not configured: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI analysis is not configured.",
+        )
+
+    except (GeminiAPIError, GeminiParseError) as exc:
+        logger.error(
+            "Gemini service error for file_id=%s: %s",
+            file_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI analysis is temporarily unavailable.",
+        )
+
+    logger.info("AI brief generated for file_id=%s user_id=%s", file_id, user_id)
+
+    return AIBusinessBriefResponse(
+        executive_summary=brief.executive_summary,
+        key_takeaways=brief.key_takeaways,
+        needs_attention=brief.needs_attention,
+        decision_context=brief.decision_context,
+    )
+

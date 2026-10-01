@@ -46,3 +46,12 @@ export interface VerificationRecord {
   fact_count: number
   created_at: string
 }
+
+// ── Phase 5: AI Business Brief ─────────────────────────────────────────────
+
+export interface AIBusinessBrief {
+  executive_summary: string
+  key_takeaways: string[]
+  needs_attention: string[]
+  decision_context: string
+}

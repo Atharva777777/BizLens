@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Hexagon,
   LayoutDashboard,
   Folder,
   LogOut,
   BarChart2,
   FileSearch,
+  ShieldCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -38,33 +38,43 @@ export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
   }
 
   const navItems = [
-    { name: 'Overview', href: '/dashboard', icon: LayoutDashboard, disabled: false },
-    { name: 'Files', href: '/dashboard/files', icon: Folder, disabled: false },
-    { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart2, disabled: false },
-    { name: 'Evidence', href: '/dashboard/evidence', icon: FileSearch, disabled: false },
+    { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Files', href: '/dashboard/files', icon: Folder },
+    { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart2 },
+    { name: 'Evidence', href: '/dashboard/evidence', icon: FileSearch },
   ]
 
   const isNavActive = (href: string): boolean => {
-    // Overview: exact match only (prevents matching all /dashboard/* routes)
     if (href === '/dashboard') return pathname === '/dashboard'
-    // All others: prefix match
     return pathname.startsWith(href)
   }
 
+  // Get user initials for avatar
+  const initials = userEmail
+    ? userEmail.charAt(0).toUpperCase()
+    : '?'
+
   const SidebarContent = (
     <div className="flex h-full flex-col bg-surface border-r border-border">
-      <div className="flex h-16 items-center px-6">
+      {/* Logo */}
+      <div className="flex h-14 items-center px-5 border-b border-border">
         <Link
           href="/dashboard"
-          className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-foreground"
+          className="flex items-center gap-2.5 text-[15px] font-semibold tracking-tight text-foreground"
           onClick={onMobileClose}
         >
-          <Hexagon className="size-5 text-accent stroke-[2]" aria-hidden="true" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-foreground text-background">
+            <ShieldCheck className="size-4" aria-hidden="true" />
+          </div>
           BizLens
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
+        <p className="px-3 mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          Workspace
+        </p>
         {navItems.map((item) => {
           const active = isNavActive(item.href)
           return (
@@ -73,61 +83,70 @@ export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
               href={item.href}
               onClick={onMobileClose}
               className={cn(
-                'group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-150',
                 active
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                  ? 'bg-foreground/[0.08] text-foreground'
+                  : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground',
               )}
             >
               <item.icon
                 className={cn(
-                  'size-4 shrink-0',
+                  'size-4 shrink-0 transition-colors',
                   active
-                    ? 'text-primary-foreground'
-                    : 'text-muted-foreground group-hover:text-foreground',
+                    ? 'text-foreground'
+                    : 'text-muted-foreground/70 group-hover:text-foreground/70',
                 )}
                 aria-hidden="true"
               />
               {item.name}
+              {active && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
+              )}
             </Link>
           )
         })}
       </nav>
 
-      <div className="border-t border-border p-4">
-        <div className="flex flex-col gap-3">
-          <span className="truncate px-2 text-xs font-medium text-muted-foreground">
-            {userEmail || 'Loading...'}
-          </span>
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground w-full text-left"
-          >
-            <LogOut className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            Sign out
-          </button>
+      {/* User footer */}
+      <div className="border-t border-border p-3">
+        <div className="flex items-center gap-3 rounded-md px-2 py-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted border border-border text-xs font-semibold text-foreground">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="truncate text-xs font-medium text-foreground">
+              {userEmail || 'Loading...'}
+            </p>
+            <p className="text-[10px] text-muted-foreground">Authenticated</p>
+          </div>
         </div>
+        <button
+          onClick={handleSignOut}
+          className="mt-1 flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground text-left"
+        >
+          <LogOut className="size-4 shrink-0" aria-hidden="true" />
+          Sign out
+        </button>
       </div>
     </div>
   )
 
-  // Mobile Drawer (Rendered conditionally via layout or CSS)
   return (
     <>
       {/* Desktop Persistent Sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64 lg:flex-col">
+      <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-60 lg:flex-col">
         {SidebarContent}
       </div>
 
       {/* Mobile Drawer Backdrop */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div 
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity" 
+          <div
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm"
             onClick={onMobileClose}
             aria-hidden="true"
           />
-          <div className="fixed inset-y-0 left-0 z-40 w-64 bg-surface shadow-xl flex flex-col">
+          <div className="fixed inset-y-0 left-0 z-40 w-60 bg-surface shadow-xl flex flex-col">
             {SidebarContent}
           </div>
         </div>

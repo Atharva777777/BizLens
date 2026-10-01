@@ -58,7 +58,7 @@ export default function DashboardLayout({
     <div className="min-h-screen bg-background text-foreground font-sans">
       <AppSidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
       
-      <div className="lg:pl-64 flex flex-col min-h-screen">
+      <div className="lg:pl-60 flex flex-col min-h-screen">
         <AppTopbar onMenuClick={() => setMobileMenuOpen(true)} />
         
         <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8">

@@ -1,5 +1,5 @@
 import { API_BASE_URL, getAuthHeaders, parseApiError } from './client'
-import { FileInsightsResponse, FileMetrics, NormalizedFact, VerificationRecord } from '@/lib/types/analytics'
+import { AIBusinessBrief, FileInsightsResponse, FileMetrics, NormalizedFact, VerificationRecord } from '@/lib/types/analytics'
 
 export const apiAnalytics = {
   /**
@@ -92,6 +92,28 @@ export const apiAnalytics = {
     if (!response.ok) {
       const errorMessage = await parseApiError(response)
       throw new Error(`Failed to fetch verification records: ${errorMessage}`)
+    }
+
+    return response.json()
+  },
+
+  // ── Phase 5: AI Business Brief ──────────────────────────────────────────
+
+  /**
+   * Generates an AI Business Brief for a completed file.
+   * Calls POST /analytics/{fileId}/brief — the Gemini API key lives exclusively
+   * on the backend and is never exposed to the browser.
+   */
+  generateBusinessBrief: async (fileId: string): Promise<AIBusinessBrief> => {
+    const headers = await getAuthHeaders()
+    const response = await fetch(`${API_BASE_URL}/analytics/${fileId}/brief`, {
+      method: 'POST',
+      headers,
+    })
+
+    if (!response.ok) {
+      const errorMessage = await parseApiError(response)
+      throw new Error(errorMessage)
     }
 
     return response.json()

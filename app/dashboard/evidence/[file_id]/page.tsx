@@ -10,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   FileSearch,
+  BarChart2,
 } from 'lucide-react'
 import { apiAnalytics } from '@/lib/api/analytics'
 import { apiFiles } from '@/lib/api/files'
@@ -25,6 +26,14 @@ function formatCurrency(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value)
+}
+
+function formatBytes(bytes: number): string {
+  if (!+bytes) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
 type FactWithType = NormalizedFact & { type: 'revenue' | 'expense' }
@@ -70,11 +79,17 @@ export default function EvidenceFilePage() {
   const revenueCount = facts.filter((f) => f.type === 'revenue').length
   const expenseCount = facts.filter((f) => f.type === 'expense').length
 
+  // Totals for evidence summary
+  const totalRevenueValue = facts.filter(f => f.type === 'revenue' && f.value_numeric !== null)
+    .reduce((sum, f) => sum + (f.value_numeric ?? 0), 0)
+  const totalExpenseValue = facts.filter(f => f.type === 'expense' && f.value_numeric !== null)
+    .reduce((sum, f) => sum + (f.value_numeric ?? 0), 0)
+
   if (isLoading) {
     return (
-      <div className="max-w-5xl animate-in fade-in duration-500">
+      <div className="max-w-4xl animate-in fade-in duration-500">
         <div className="flex items-center gap-2 mb-8 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading evidence...
+          <Loader2 className="size-4 animate-spin" /> Loading evidence…
         </div>
         <div className="rounded-xl border border-border bg-surface p-6 h-64 animate-pulse" />
       </div>
@@ -90,7 +105,7 @@ export default function EvidenceFilePage() {
         >
           <ArrowLeft className="mr-2 size-4" /> Back to Evidence
         </Link>
-        <div className="rounded-xl border border-border bg-surface shadow-sm p-12 text-center flex flex-col items-center">
+        <div className="rounded-xl border border-border bg-surface p-12 text-center flex flex-col items-center">
           <AlertCircle className="size-10 text-danger mb-4" />
           <h3 className="text-lg font-medium text-foreground">Failed to load evidence</h3>
           <p className="mt-2 text-sm text-muted-foreground max-w-md">{error}</p>
@@ -105,42 +120,98 @@ export default function EvidenceFilePage() {
   }
 
   return (
-    <div className="max-w-5xl animate-in fade-in duration-500">
-      <div className="mb-8 flex flex-col md:flex-row md:items-start justify-between gap-4">
-        <div>
-          <Link
-            href="/dashboard/evidence"
-            className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-4"
-          >
-            <ArrowLeft className="mr-2 size-4" /> Back to datasets
-          </Link>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-serif tracking-tight text-foreground">
-              {file?.original_filename}
-            </h2>
-            {file?.status && (
-              <span className="inline-flex items-center rounded-md bg-success/10 px-2 py-1 text-[10px] font-medium text-success ring-1 ring-inset ring-success/20 uppercase tracking-wider">
-                {file.status}
+    <div className="max-w-4xl animate-in fade-in duration-500 space-y-5">
+
+      {/* Header */}
+      <div>
+        <Link
+          href="/dashboard/evidence"
+          className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-4"
+        >
+          <ArrowLeft className="mr-1.5 size-4" /> All datasets
+        </Link>
+
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center flex-wrap gap-2.5">
+              <h2 className="text-xl font-serif tracking-tight text-foreground">
+                {file?.original_filename}
+              </h2>
+              <span className="inline-flex items-center rounded-md bg-success/10 px-2 py-1 text-[10px] font-semibold text-success ring-1 ring-inset ring-success/20 uppercase tracking-wider">
+                {file?.status}
               </span>
-            )}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {file && formatBytes(file.file_size)} ·{' '}
+              {file && new Date(file.created_at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}
+              {' · '}
+              {facts.length} fact{facts.length !== 1 ? 's' : ''} extracted
+            </p>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {facts.length} fact{facts.length !== 1 ? 's' : ''} extracted &middot;{' '}
-            {revenueCount} revenue &middot; {expenseCount} expense
-          </p>
+          <Link
+            href={`/dashboard/analytics/${fileId}`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <BarChart2 className="size-4 mr-2" /> View Analytics
+          </Link>
         </div>
       </div>
 
+      {/* Provenance context banner */}
+      {facts.length > 0 && (
+        <div className="rounded-lg bg-surface-muted border border-border px-4 py-3">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <span className="font-semibold text-foreground">What you&apos;re seeing:</span>
+            {' '}These are the individual financial fact records extracted from your dataset by the BizLens ingestion engine.
+            Each row corresponds to a line in your source data. Aggregating all revenue facts gives the total revenue metric,
+            and aggregating all expense facts gives the total expense metric — so the numbers here are the evidence behind every reported figure.
+          </p>
+        </div>
+      )}
+
+      {/* Summary cards */}
+      {facts.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2">Total Facts</div>
+            <div className="text-2xl font-semibold text-foreground tabular-nums">{facts.length}</div>
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2 flex items-center gap-1">
+              <TrendingUp className="size-3 text-success" /> Revenue
+            </div>
+            <div className="text-2xl font-semibold text-foreground tabular-nums">{revenueCount}</div>
+            {revenueCount > 0 && (
+              <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalRevenueValue)} sum</div>
+            )}
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2 flex items-center gap-1">
+              <TrendingDown className="size-3 text-danger" /> Expense
+            </div>
+            <div className="text-2xl font-semibold text-foreground tabular-nums">{expenseCount}</div>
+            {expenseCount > 0 && (
+              <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalExpenseValue)} sum</div>
+            )}
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2">Source</div>
+            <div className="text-sm font-medium text-foreground truncate">{file?.original_filename}</div>
+          </div>
+        </div>
+      )}
+
       {facts.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-16 text-center flex flex-col items-center">
+        <div className="rounded-xl border border-border bg-surface p-14 text-center flex flex-col items-center">
           <FileSearch className="size-10 text-muted-foreground mb-4" />
           <h3 className="text-base font-medium text-foreground mb-2">No facts found</h3>
           <p className="text-sm text-muted-foreground max-w-xs">
             No recognizable financial facts were extracted from this dataset.
+            Only datasets with detectable revenue or expense data will have evidence records.
           </p>
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {/* Filter controls */}
           <div className="flex items-center gap-2">
             {(['all', 'revenue', 'expense'] as FactFilter[]).map((f) => (
@@ -150,7 +221,7 @@ export default function EvidenceFilePage() {
                 className={cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors border',
                   filter === f
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-foreground text-background border-foreground'
                     : 'bg-surface text-muted-foreground border-border hover:bg-surface-muted hover:text-foreground',
                 )}
               >
@@ -162,41 +233,44 @@ export default function EvidenceFilePage() {
                 </span>
               </button>
             ))}
+            <span className="ml-auto text-xs text-muted-foreground">
+              {displayed.length} of {facts.length} fact{facts.length !== 1 ? 's' : ''}
+            </span>
           </div>
 
           {/* Evidence table */}
-          <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-surface-muted text-muted-foreground uppercase tracking-wider text-xs font-medium border-b border-border">
+                <thead className="bg-surface-muted text-muted-foreground uppercase tracking-wider text-xs font-semibold border-b border-border">
                   <tr>
-                    <th className="px-6 py-3">Source Row</th>
-                    <th className="px-6 py-3">Type</th>
-                    <th className="px-6 py-3">Category</th>
-                    <th className="px-6 py-3">Date</th>
-                    <th className="px-6 py-3 text-right">Value</th>
+                    <th className="px-5 py-3">Source Row</th>
+                    <th className="px-5 py-3">Type</th>
+                    <th className="px-5 py-3">Category</th>
+                    <th className="px-5 py-3">Date</th>
+                    <th className="px-5 py-3 text-right">Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-surface">
                   {displayed.map((fact) => (
-                    <tr key={fact.id} className="hover:bg-surface-muted/50 transition-colors">
-                      <td className="px-6 py-3 text-muted-foreground tabular-nums">
+                    <tr key={fact.id} className="hover:bg-surface-muted/40 transition-colors">
+                      <td className="px-5 py-3 text-muted-foreground tabular-nums text-xs">
                         Row {fact.row_number}
                       </td>
-                      <td className="px-6 py-3">
+                      <td className="px-5 py-3">
                         {fact.type === 'revenue' ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
-                            <TrendingUp className="size-3" />Revenue
+                            <TrendingUp className="size-3" /> Revenue
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-danger">
-                            <TrendingDown className="size-3" />Expense
+                            <TrendingDown className="size-3" /> Expense
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground">{fact.category || '—'}</td>
-                      <td className="px-6 py-3 text-muted-foreground">{fact.date_value || '—'}</td>
-                      <td className="px-6 py-3 text-right font-medium tabular-nums">
+                      <td className="px-5 py-3 text-muted-foreground text-sm">{fact.category || '—'}</td>
+                      <td className="px-5 py-3 text-muted-foreground text-sm">{fact.date_value || '—'}</td>
+                      <td className="px-5 py-3 text-right font-semibold tabular-nums text-sm">
                         {fact.value_numeric !== null ? formatCurrency(fact.value_numeric) : '—'}
                       </td>
                     </tr>
@@ -206,8 +280,9 @@ export default function EvidenceFilePage() {
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground text-right">
-            Showing {displayed.length} of {facts.length} fact{facts.length !== 1 ? 's' : ''}
+          <p className="text-xs text-muted-foreground">
+            Summing all revenue facts = total revenue metric. Summing all expense facts = total expense metric.
+            These facts are the source of truth for verification.
           </p>
         </div>
       )}
